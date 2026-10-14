@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de Tarefas Profissional - Vue.js & Tailwind</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue.js 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- FontAwesome para ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-md bg-slate-800 rounded-2xl shadow-2xl border border-slate-700 overflow-hidden">
+
+        <!-- Cabeçalho -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
+            <h1 class="text-2xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-list-check"></i> Minhas Tarefas
+            </h1>
+            <p class="text-blue-100 text-sm mt-1">Organize seu dia com eficiência</p>
+        </div>
+
+        <!-- Conteúdo Principal -->
+        <div class="p-6 space-y-6">
+
+            <!-- Formulário de Adição / Edição -->
+            <form @submit.prevent="saveTask" class="flex gap-2">
+                <input type="text" v-model="newTaskText"
+                    :placeholder="editingId ? 'Editando tarefa...' : 'Adicionar uma nova tarefa...'"
+                    class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition-colors">
+                <button type="submit"
+                    :class="['px-5 rounded-xl font-medium transition-colors flex items-center justify-center shadow-lg', editingId ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30 text-white' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30 text-white']">
+                    <i :class="editingId ? 'fa-solid fa-pen' : 'fa-solid fa-plus'"></i>
+                </button>
+                <button v-if="editingId" type="button" @click="cancelEdit"
+                    class="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 rounded-xl transition-colors"
+                    title="Cancelar edição">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </form>
+
+            <!-- Status e Filtros -->
+            <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+                <span>{{ remainingTasks }} tarefas pendentes</span>
+                <div class="flex gap-2">
+                    <button @click="filter = 'all'"
+                        :class="filter === 'all' ? 'text-blue-400 font-semibold' : 'hover:text-slate-200'">Todas</button>
+                    <button @click="filter = 'pending'"
+                        :class="filter === 'pending' ? 'text-blue-400 font-semibold' : 'hover:text-slate-200'">Pendentes</button>
+                    <button @click="filter = 'completed'"
+                        :class="filter === 'completed' ? 'text-blue-400 font-semibold' : 'hover:text-slate-200'">Concluídas</button>
+                </div>
+            </div>
+
+            <!-- Lista de Tarefas -->
+            <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
+                <div v-if="filteredTasks.length === 0" class="text-center py-8 text-slate-500 text-sm">
+                    Nenhuma tarefa encontrada.
+                </div>
+
+                <div v-for="task in filteredTasks" :key="task.id"
+                    class="flex items-center justify-between bg-slate-900/50 border border-slate-700/50 p-4 rounded-xl transition-all hover:border-slate-600 group">
+
+                    <div class="flex items-center gap-3 cursor-pointer flex-1" @click="toggleTask(task)">
+                        <div
+                            :class="['w-5 h-5 rounded-lg flex items-center justify-center border transition-colors', task.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-600 bg-slate-800']">
+                            <i v-if="task.completed" class="fa-solid fa-check text-xs"></i>
+                        </div>
+                        <span
+                            :class="['text-sm transition-all', task.completed ? 'line-through text-slate-500' : 'text-slate-200']">
+                            {{ task.text }}
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <!-- Botão Editar -->
+                        <button @click="startEdit(task)"
+                            class="text-slate-500 hover:text-amber-400 p-1.5 transition-colors" title="Editar">
+                            <i class="fa-solid fa-pen text-xs"></i>
+                        </button>
+                        <!-- Botão Excluir -->
+                        <button @click="removeTask(task.id)"
+                            class="text-slate-500 hover:text-rose-400 p-1.5 transition-colors" title="Excluir">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Lógica Vue.js 3 com Persistência Local Robusta -->
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue
+
+        createApp({
+            setup() {
+                const newTaskText = ref('')
+                const tasks = ref([])
+                const filter = ref('all')
+                const editingId = ref(null)
+
+                // Carregar tarefas salvas ao iniciar
+                onMounted(() => {
+                    const saved = localStorage.getItem('anderson_todo_list')
+                    if (saved) {
+                        try {
+                            tasks.value = JSON.parse(saved)
+                        } catch (e) {
+                            console.error('Erro ao carregar dados salvos', e)
+                        }
+                    }
+                })
+
+                // Função auxiliar para salvar no navegador
+                const persist = () => {
+                    localStorage.setItem('anderson_todo_list', JSON.stringify(tasks.value))
+                }
+
+                // Adicionar ou Atualizar Tarefa
+                const saveTask = () => {
+                    if (!newTaskText.value.trim()) return
+
+                    if (editingId.value) {
+                        // Editar tarefa existente
+                        tasks.value = tasks.value.map(t => {
+                            if (t.id === editingId.value) {
+                                return { ...t, text: newTaskText.value.trim() }
+                            }
+                            return t
+                        })
+                        editingId.value = null
+                    } else {
+                        // Criar nova tarefa
+                        tasks.value.unshift({
+                            id: Date.now(),
+                            text: newTaskText.value.trim(),
+                            completed: false
+                        })
+                    }
+
+                    newTaskText.value = ''
+                    persist()
+                }
+
+                // Iniciar edição
+                const startEdit = (task) => {
+                    editingId.value = task.id
+                    newTaskText.value = task.text
+                }
+
+                // Cancelar edição
+                const cancelEdit = () => {
+                    editingId.value = null
+                    newTaskText.value = ''
+                }
+
+                // Alternar status
+                const toggleTask = (task) => {
+                    task.completed = !task.completed
+                    persist()
+                }
+
+                // Remover tarefa
+                const removeTask = (id) => {
+                    tasks.value = tasks.value.filter(t => t.id !== id)
+                    if (editingId.value === id) cancelEdit()
+                    persist()
+                }
+
+                // Contadores e Filtros
+                const remainingTasks = computed(() => {
+                    return tasks.value.filter(t => !t.completed).length
+                })
+
+                const filteredTasks = computed(() => {
+                    if (filter.value === 'pending') {
+                        return tasks.value.filter(t => !t.completed)
+                    } else if (filter.value === 'completed') {
+                        return tasks.value.filter(t => t.completed)
+                    }
+                    return tasks.value
+                })
+
+                return {
+                    newTaskText,
+                    tasks,
+                    filter,
+                    editingId,
+                    saveTask,
+                    startEdit,
+                    cancelEdit,
+                    toggleTask,
+                    removeTask,
+                    remainingTasks,
+                    filteredTasks
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+
+</html>
